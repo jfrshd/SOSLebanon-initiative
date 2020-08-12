@@ -5,8 +5,14 @@ import * as cognito from "@aws-cdk/aws-cognito";
 import * as iam from "@aws-cdk/aws-iam";
 import * as ses from "@aws-cdk/aws-ses";
 import { Duration } from "@aws-cdk/core";
+import * as defaults from "../extras/defaults";
+import * as lambda from "@aws-cdk/aws-lambda";
+import * as path from "path";
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
+  accessKeyId = "AKIATFY2NK7HUWZGFQKK";
+  secretAccessKey = "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";
+
   api: apigw.RestApi;
   initiativesTable: dynamodb.Table;
   authorizer: apigw.CfnAuthorizer;
@@ -14,17 +20,57 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+    this.api = new apigw.RestApi(this, "SOSInitiativeLebanonAPI");
     this.createInitiativeCognito();
     this.createInitiativestable();
+    this.createAPIResources();
   }
+  createAPIResources() {
+    const initiativeApiResource = this.api.root.addResource("initiative");
+    initiativeApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
+      defaults.options
+    );
 
+    this.createPostsFunction(initiativeApiResource); // POST
+  }
+  createPostsFunction(initiativeApiResource: apigw.Resource) {
+    const registerInitiative = new lambda.Function(
+      this,
+      "register-initiative",
+      {
+        functionName: "register-initiative",
+        runtime: lambda.Runtime.NODEJS_12_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset(
+          path.join(__dirname, "../lambdas/register-initiative")
+        ),
+        environment: {
+          INITIATIVES_TABLE: this.initiativesTable.tableName,
+          USERPOOL_ID: this.userPool.userPoolId,
+          REGION: this.region,
+          ACCESS_KEY_ID: this.accessKeyId,
+          SECRET_ACCESS_KEY: this.secretAccessKey,
+        },
+      }
+    );
+
+    this.initiativesTable.grantReadWriteData(registerInitiative);
+
+    initiativeApiResource.addMethod(
+      "POST",
+      defaults.lambdaIntegration(registerInitiative, {}),
+      defaults.options
+    );
+  }
   createInitiativestable(): void {
     this.initiativesTable = new dynamodb.Table(this, "initiatives-table", {
       tableName: "initiatives",
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: {
         name: "sk",
-        type: dynamodb.AttributeType.STRING,
+        type: dynamodb.AttributeType.NUMBER,
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
