@@ -8,6 +8,8 @@ import { Duration } from "@aws-cdk/core";
 import * as defaults from "../extras/defaults";
 import * as lambda from "@aws-cdk/aws-lambda";
 import * as path from "path";
+import { Bucket } from "@aws-cdk/aws-s3";
+import { S3ApiDefinition } from "@aws-cdk/aws-apigateway";
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
   accessKeyId = "AKIATFY2NK7HUWZGFQKK";
@@ -17,10 +19,16 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
   initiativesTable: dynamodb.Table;
   authorizer: apigw.CfnAuthorizer;
   userPool: cognito.UserPool;
+  bucket: Bucket;
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     this.api = new apigw.RestApi(this, "SOSInitiativeLebanonAPI");
+    this.bucket = new Bucket(this, "soslebanon-initiative-bucket", {
+      bucketName: "soslebanon-initiative-bucket",
+      publicReadAccess: true,
+    });
+
     this.createInitiativeCognito();
     this.createInitiativestable();
     this.createAPIResources();
@@ -52,11 +60,13 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
           REGION: this.region,
           ACCESS_KEY_ID: this.accessKeyId,
           SECRET_ACCESS_KEY: this.secretAccessKey,
+          BUCKET_NAME: this.bucket.bucketName
         },
       }
     );
 
     this.initiativesTable.grantReadWriteData(registerInitiative);
+    this.bucket.grantReadWrite(registerInitiative);
 
     initiativeApiResource.addMethod(
       "POST",
