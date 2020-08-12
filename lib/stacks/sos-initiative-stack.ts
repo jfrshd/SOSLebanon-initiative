@@ -8,16 +8,27 @@ import { Duration } from "@aws-cdk/core";
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
   api: apigw.RestApi;
-  postsTable: dynamodb.Table;
-  settingsTable: dynamodb.Table;
+  initiativesTable: dynamodb.Table;
   authorizer: apigw.CfnAuthorizer;
   userPool: cognito.UserPool;
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     this.createInitiativeCognito();
+    this.createInitiativestable();
   }
 
+  createInitiativestable(): void {
+    this.initiativesTable = new dynamodb.Table(this, "initiatives-table", {
+      tableName: "initiatives",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: {
+        name: "sk",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+  }
   createInitiativeCognito(): void {
     const confSet = new ses.CfnConfigurationSet(
       this,
