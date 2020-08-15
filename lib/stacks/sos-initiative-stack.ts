@@ -17,6 +17,8 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
 
   api: apigw.RestApi;
   initiativesTable: dynamodb.Table;
+  casesTable: dynamodb.Table;
+  settingsTable: dynamodb.Table;
   authorizer: apigw.CfnAuthorizer;
   userPool: cognito.UserPool;
   bucket: Bucket;
@@ -31,8 +33,13 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
 
     this.createInitiativeCognito();
     this.createInitiativestable();
+    this.createCasesTable();
+    this.createSettingstable();
     this.createAPIResources();
+
   }
+
+  //api resources
   createAPIResources() {
     const initiativeApiResource = this.api.root.addResource("initiative");
     initiativeApiResource.addMethod(
@@ -41,39 +48,59 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       defaults.options
     );
 
-    this.createPostsFunction(initiativeApiResource); // POST
-  }
-  createPostsFunction(initiativeApiResource: apigw.Resource) {
-    const registerInitiative = new lambda.Function(
-      this,
-      "register-initiative",
-      {
-        functionName: "register-initiative",
-        runtime: lambda.Runtime.NODEJS_12_X,
-        handler: "index.handler",
-        code: lambda.Code.fromAsset(
-          path.join(__dirname, "../lambdas/register-initiative")
-        ),
-        environment: {
-          INITIATIVES_TABLE: this.initiativesTable.tableName,
-          USERPOOL_ID: this.userPool.userPoolId,
-          REGION: this.region,
-          ACCESS_KEY_ID: this.accessKeyId,
-          SECRET_ACCESS_KEY: this.secretAccessKey,
-          BUCKET_NAME: this.bucket.bucketName
-        },
-      }
-    );
+    this.createInitiativeFunction(initiativeApiResource);
 
-    this.initiativesTable.grantReadWriteData(registerInitiative);
-    this.bucket.grantReadWrite(registerInitiative);
-
-    initiativeApiResource.addMethod(
-      "POST",
-      defaults.lambdaIntegration(registerInitiative, {}),
+    /* case api resources */
+    const caseApiResource = this.api.root.addResource("case");
+    caseApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
       defaults.options
     );
+
+    this.createCaseFunction(caseApiResource);
+    this.deleteCaseFunction(caseApiResource);
+    this.getCaseFunction(caseApiResource);
+
+    const listCasesApiResource = this.api.root.addResource("cases");
+    listCasesApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
+      defaults.options
+    );
+
+    this.listCasesFunction(listCasesApiResource);
+
+    const userCasesApiResource = this.api.root.addResource("usercases");
+    userCasesApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
+      defaults.options
+    );
+
+    this.listInitiativeCaesFunction(userCasesApiResource);
+
+    /* location api resource */
+    const locationApiResource = this.api.root.addResource("locations");
+    locationApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
+      defaults.options
+    );
+
+    this.ListLocationsFunction(locationApiResource);
+    /* category api resource */
+    const categoriesApiResource = this.api.root.addResource("categories");
+    categoriesApiResource.addMethod(
+      "OPTIONS",
+      defaults.mockIntegration,
+      defaults.options
+    );
+
+    this.ListCategoriesFunction(categoriesApiResource);
   }
+
+  /* dynamo db tables */
   createInitiativestable(): void {
     this.initiativesTable = new dynamodb.Table(this, "initiatives-table", {
       tableName: "initiatives",
@@ -85,6 +112,46 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
   }
+
+  createCasesTable(): void {
+    this.casesTable = new dynamodb.Table(this, "cases-table", {
+      tableName: "cases-table",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: {
+        name: "id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+    this.casesTable.addLocalSecondaryIndex({
+      indexName: "updatedDate",
+      sortKey: {
+        name: "updatedDate",
+        type: dynamodb.AttributeType.NUMBER,
+      },
+    });
+    this.casesTable.addLocalSecondaryIndex({
+      indexName: "categoryId",
+      sortKey: {
+        name: "categoryId",
+        type: dynamodb.AttributeType.STRING,
+      },
+    });
+  }
+
+  createSettingstable(): void {
+    this.settingsTable = new dynamodb.Table(this, "initiative-settings-table", {
+      tableName: "initiative-settings-table",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: {
+        name: "id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+  }
+
+  /* coginto for initiative */
   createInitiativeCognito(): void {
     const confSet = new ses.CfnConfigurationSet(
       this,
@@ -145,13 +212,13 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
     //     "arn:aws:ses:eu-west-1:218561861583:identity/helpdesk@soslebanon.com",
     // };
 
-    // this.authorizer = new apigw.CfnAuthorizer(this, "APIGatewayAuthorizer", {
-    //   name: "cognito-authorizer",
-    //   identitySource: "method.request.header.Authorization",
-    //   providerArns: [cfnUserPool.attrArn],
-    //   restApiId: this.api.restApiId,
-    //   type: apigw.AuthorizationType.COGNITO,
-    // });
+    this.authorizer = new apigw.CfnAuthorizer(this, "APIGatewayAuthorizer", {
+      name: "cognito-authorizer",
+      identitySource: "method.request.header.Authorization",
+      providerArns: [cfnUserPool.attrArn],
+      restApiId: this.api.restApiId,
+      type: apigw.AuthorizationType.COGNITO,
+    });
 
     const userPoolClient = new cognito.UserPoolClient(
       this,
@@ -253,4 +320,245 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       }
     );
   }
+
+  /* initiative function */
+  createInitiativeFunction(initiativeApiResource: apigw.Resource) {
+    const registerInitiative = new lambda.Function(
+      this,
+      "register-initiative",
+      {
+        functionName: "register-initiative",
+        runtime: lambda.Runtime.NODEJS_12_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset(
+          path.join(__dirname, "../lambdas/register-initiative")
+        ),
+        environment: {
+          INITIATIVES_TABLE: this.initiativesTable.tableName,
+          USERPOOL_ID: this.userPool.userPoolId,
+          REGION: this.region,
+          ACCESS_KEY_ID: this.accessKeyId,
+          SECRET_ACCESS_KEY: this.secretAccessKey,
+          BUCKET_NAME: this.bucket.bucketName
+        },
+      }
+    );
+
+    this.initiativesTable.grantReadWriteData(registerInitiative);
+    this.bucket.grantReadWrite(registerInitiative);
+
+    initiativeApiResource.addMethod(
+      "POST",
+      defaults.lambdaIntegration(registerInitiative, {}),
+      defaults.options
+    );
+  }
+
+  /* cases function */
+  createCaseFunction(adminApiResource: apigw.Resource) {
+    const postCase = new lambda.Function(this, "post-case", {
+      functionName: "post-case",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/post-case")
+      ),
+      environment: {
+        CASES_TABLE: this.casesTable.tableName,
+      },
+    });
+
+    this.casesTable.grantReadWriteData(postCase);
+
+    adminApiResource.addMethod(
+      "POST",
+      defaults.lambdaIntegration(postCase, {
+        "application/json":
+          '{\n"requestBody": $input.body,\n"sub": "$context.authorizer.claims.sub"\n}',
+      }),
+      {
+        ...defaults.options,
+        authorizationType: apigw.AuthorizationType.COGNITO,
+        authorizer: { authorizerId: this.authorizer.ref },
+      }
+    );
+  }
+
+  deleteCaseFunction(adminApiResource: apigw.Resource) {
+    const getTypePosts = new lambda.Function(this, "delete-case", {
+      functionName: "delete-case",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/delete-case")
+      ),
+      environment: {
+        CASES_TABLE: this.casesTable.tableName,
+      },
+    });
+
+    this.casesTable.grantWriteData(getTypePosts);
+
+    adminApiResource.addMethod(
+      "DELETE",
+      defaults.lambdaIntegration(getTypePosts, {
+        "application/json": `
+            #set($hasId = $input.params('id'))
+            {
+              "sub": "$context.authorizer.claims.sub"
+              #if($hasId != ""), "id" : "$input.params('id')"#end
+            }
+          `,
+      }),
+      {
+        ...defaults.options,
+        authorizationType: apigw.AuthorizationType.COGNITO,
+        authorizer: { authorizerId: this.authorizer.ref },
+      }
+    );
+  }
+
+  listCasesFunction(latestPostsApiResource: apigw.Resource) {
+    const getLatestPosts = new lambda.Function(this, "list-cases", {
+      functionName: "list-cases",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/list-cases")
+      ),
+      environment: {
+        CASES_TABLE: this.casesTable.tableName,
+        identityPoolId: this.userPool.userPoolId,
+      },
+    });
+
+    this.casesTable.grantReadData(getLatestPosts);
+
+    getLatestPosts.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["lambda:InvokeFunction", "cognito-idp:*"],
+        resources: ["*"],
+      })
+    );
+
+    latestPostsApiResource.addMethod(
+      "GET",
+      defaults.lambdaIntegration(getLatestPosts, {
+        "application/json": `
+        #set($hasLastEvaluatedKey = $input.params('LastEvaluatedKey'))
+        #set($hasLimit = $input.params('limit'))
+        #set($hasTypeId = $input.params('categoryId'))
+        #set($hasKeyword = $input.params('keyword'))
+        {
+        #if($hasLimit != "") "limit" : "$input.params('limit')"#end
+        #if($hasTypeId != ""), "typeId" : "$input.params('categoryId')"#end
+        #if($hasKeyword != ""), "keyword" : "$input.params('keyword')"#end
+        #if($hasLastEvaluatedKey != ""), "LastEvaluatedKey" : "$input.params('LastEvaluatedKey')"#end
+        }
+        `,
+      }),
+      defaults.options
+    );
+  }
+
+  listInitiativeCaesFunction(adminApiResource: apigw.Resource) {
+    const listInitiativeCaes = new lambda.Function(this, "list-initiative-cases", {
+      functionName: "list-initiative-cases",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/list-initiative-cases")
+      ),
+      environment: {
+        POSTS_TABLE: this.casesTable.tableName,
+      },
+    });
+
+    this.casesTable.grantReadData(listInitiativeCaes);
+
+    adminApiResource.addMethod(
+      "GET",
+      defaults.lambdaIntegration(listInitiativeCaes, {
+        "application/json": '{\n"sub": "$context.authorizer.claims.sub"\n}',
+      }),
+      {
+        ...defaults.options,
+        authorizationType: apigw.AuthorizationType.COGNITO,
+        authorizer: { authorizerId: this.authorizer.ref },
+      }
+    );
+  }
+
+  getCaseFunction(postApiResource: apigw.Resource) {
+    const getCase = new lambda.Function(this, "get-case", {
+      functionName: "get-case",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "../lambdas/get-case")),
+      environment: {
+        POSTS_TABLE: this.casesTable.tableName,
+      },
+    });
+
+    this.casesTable.grantReadData(getCase);
+
+    postApiResource.addMethod(
+      "GET",
+      defaults.lambdaIntegration(getCase, {
+        "application/json": `
+          #set($hasId = $input.params('id'))
+          {
+            #if($hasId != "") "id" : "$input.params('id')"#end
+          }
+        `,
+      }),
+      defaults.options
+    );
+  }
+
+  /* location functions */
+  ListLocationsFunction(locationApiResource: apigw.Resource) {
+    const listLocations = new lambda.Function(this, "list-locations", {
+      functionName: "list-locations",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/list-locations")
+      ),
+      environment: {
+        SETTINGS_TABLE: this.settingsTable.tableName,
+      },
+    });
+
+    this.settingsTable.grantReadData(listLocations);
+
+    locationApiResource.addMethod(
+      "GET",
+      defaults.lambdaIntegration(listLocations, {}),
+      defaults.options
+    );
+  }
+
+  /* category functions */
+  ListCategoriesFunction(typeApiResource: apigw.Resource) {
+    const listCagetories = new lambda.Function(this, "list-categories", {
+      functionName: "list-categories",
+      runtime: lambda.Runtime.NODEJS_12_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "../lambdas/list-categories")),
+      environment: {
+        SETTINGS_TABLE: this.settingsTable.tableName,
+      },
+    });
+
+    this.settingsTable.grantReadData(listCagetories);
+
+    typeApiResource.addMethod(
+      "GET",
+      defaults.lambdaIntegration(listCagetories, {}),
+      defaults.options
+    );
+  }
+  
 }
