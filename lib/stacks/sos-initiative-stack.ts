@@ -140,8 +140,8 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
   }
 
   createSettingstable(): void {
-    this.settingsTable = new dynamodb.Table(this, "initiative-settings-table", {
-      tableName: "initiative-settings-table",
+    this.settingsTable = new dynamodb.Table(this, "settings-table", {
+      tableName: "settings-table",
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: {
         name: "id",
@@ -560,5 +560,5 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       defaults.options
     );
   }
-  
+
 }
