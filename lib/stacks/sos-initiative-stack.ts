@@ -12,8 +12,8 @@ import { Bucket } from "@aws-cdk/aws-s3";
 import { S3ApiDefinition } from "@aws-cdk/aws-apigateway";
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
-  accessKeyId = "6r0d8f43ii7e8qq50rujql5kq4";
-  secretAccessKey = "t9g4e475r7mujr9hleptcpqia5lcr3madrv4udvjp9baa7elkcu";
+  accessKeyId = "AKIATFY2NK7HUWZGFQKK";
+  secretAccessKey = "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";
 
   api: apigw.RestApi;
   initiativesTable: dynamodb.Table;
