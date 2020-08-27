@@ -9,11 +9,13 @@ import * as defaults from "../extras/defaults";
 import * as lambda from "@aws-cdk/aws-lambda";
 import * as path from "path";
 import { Bucket } from "@aws-cdk/aws-s3";
-import { S3ApiDefinition } from "@aws-cdk/aws-apigateway";
+const dotenv = require("dotenv");
+
+dotenv.config({ path: __dirname + "/../../.env" });
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
-  accessKeyId = "AKIATFY2NK7HUWZGFQKK";
-  secretAccessKey = "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";
+  accessKeyId: string;
+  secretAccessKey: string;
 
   api: apigw.RestApi;
   initiativesTable: dynamodb.Table;
@@ -25,9 +27,13 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    this.accessKeyId = process.env.ACCESS_KEY_ID ?? "";
+    this.secretAccessKey = process.env.SECRET_ACCESS_KEY ?? "";
+
     this.api = new apigw.RestApi(this, "SOSInitiativeLebanonAPI");
     this.bucket = new Bucket(this, "soslebanon-initiative-bucket", {
-      bucketName: "soslebanon-initiative-bucket",
+      bucketName: "soslebanon-initiative-bucket2",
       publicReadAccess: true,
     });
 
@@ -36,7 +42,6 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
     this.createCasesTable();
     this.createSettingstable();
     this.createAPIResources();
-
   }
 
   //api resources
@@ -339,7 +344,7 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
           REGION: this.region,
           ACCESS_KEY_ID: this.accessKeyId,
           SECRET_ACCESS_KEY: this.secretAccessKey,
-          BUCKET_NAME: this.bucket.bucketName
+          BUCKET_NAME: this.bucket.bucketName,
         },
       }
     );
@@ -360,9 +365,7 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       functionName: "post-case",
       runtime: lambda.Runtime.NODEJS_12_X,
       handler: "index.handler",
-      code: lambda.Code.fromAsset(
-        path.join(__dirname, "../lambdas/post-case")
-      ),
+      code: lambda.Code.fromAsset(path.join(__dirname, "../lambdas/post-case")),
       environment: {
         CASES_TABLE: this.casesTable.tableName,
       },
@@ -463,17 +466,21 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
   }
 
   listInitiativeCaesFunction(adminApiResource: apigw.Resource) {
-    const listInitiativeCaes = new lambda.Function(this, "list-initiative-cases", {
-      functionName: "list-initiative-cases",
-      runtime: lambda.Runtime.NODEJS_12_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset(
-        path.join(__dirname, "../lambdas/list-initiative-cases")
-      ),
-      environment: {
-        POSTS_TABLE: this.casesTable.tableName,
-      },
-    });
+    const listInitiativeCaes = new lambda.Function(
+      this,
+      "list-initiative-cases",
+      {
+        functionName: "list-initiative-cases",
+        runtime: lambda.Runtime.NODEJS_12_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset(
+          path.join(__dirname, "../lambdas/list-initiative-cases")
+        ),
+        environment: {
+          POSTS_TABLE: this.casesTable.tableName,
+        },
+      }
+    );
 
     this.casesTable.grantReadData(listInitiativeCaes);
 
@@ -546,7 +553,9 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       functionName: "list-categories",
       runtime: lambda.Runtime.NODEJS_12_X,
       handler: "index.handler",
-      code: lambda.Code.fromAsset(path.join(__dirname, "../lambdas/list-categories")),
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambdas/list-categories")
+      ),
       environment: {
         SETTINGS_TABLE: this.settingsTable.tableName,
       },
@@ -560,5 +569,4 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
       defaults.options
     );
   }
-
 }
