@@ -9,14 +9,8 @@ import * as defaults from "../extras/defaults";
 import * as lambda from "@aws-cdk/aws-lambda";
 import * as path from "path";
 import { Bucket } from "@aws-cdk/aws-s3";
-const dotenv = require("dotenv");
-
-dotenv.config({ path: __dirname + "/../../.env" });
 
 export class SoslebanonInitiativeStack extends cdk.Stack {
-  accessKeyId: string;
-  secretAccessKey: string;
-
   api: apigw.RestApi;
   initiativesTable: dynamodb.Table;
   casesTable: dynamodb.Table;
@@ -28,12 +22,9 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    this.accessKeyId = process.env.ACCESS_KEY_ID ?? "";
-    this.secretAccessKey = process.env.SECRET_ACCESS_KEY ?? "";
-
     this.api = new apigw.RestApi(this, "SOSInitiativeLebanonAPI");
     this.bucket = new Bucket(this, "soslebanon-initiative-bucket", {
-      bucketName: "soslebanon-initiative-bucket2",
+      bucketName: "soslebanon-initiative-bucket",
       publicReadAccess: true,
     });
 
@@ -342,8 +333,6 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
           INITIATIVES_TABLE: this.initiativesTable.tableName,
           USERPOOL_ID: this.userPool.userPoolId,
           REGION: this.region,
-          ACCESS_KEY_ID: this.accessKeyId,
-          SECRET_ACCESS_KEY: this.secretAccessKey,
           BUCKET_NAME: this.bucket.bucketName,
         },
       }
@@ -351,6 +340,14 @@ export class SoslebanonInitiativeStack extends cdk.Stack {
 
     this.initiativesTable.grantReadWriteData(registerInitiative);
     this.bucket.grantReadWrite(registerInitiative);
+
+    registerInitiative.role?.addToPrincipalPolicy(
+      iam.PolicyStatement.fromJson({
+        Effect: "Allow",
+        Action: "cognito-idp:AdminCreateUser",
+        Resource: "*",
+      })
+    );
 
     initiativeApiResource.addMethod(
       "POST",
